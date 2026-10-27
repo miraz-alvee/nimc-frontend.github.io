@@ -7,10 +7,10 @@ import { LiveTradingChart } from "@/components/trade/chart/live-trading-chart";
 export default function Home() {
   return (
     <TradingProvider>
-      <main
-        className="relative h-screen w-full overflow-hidden bg-[#031d27] bg-cover bg-center bg-no-repeat font-albert-sans select-none"
-        style={{ backgroundImage: "url('/images/trade-bg-image.png')" }}
-      >
+      {/* className="relative h-screen w-full overflow-hidden bg-[#031d27] bg-cover bg-center bg-no-repeat font-albert-sans select-none"
+         style={{ backgroundImage: "url('/images/trade-bg-image.png')" }} */}
+         
+      <main className="relative h-screen w-full overflow-hidden bg-[#031d27] font-albert-sans select-none">
         {/* Full-screen Live Trading Canvas Chart connected via WebSocket */}
         <LiveTradingChart />
 

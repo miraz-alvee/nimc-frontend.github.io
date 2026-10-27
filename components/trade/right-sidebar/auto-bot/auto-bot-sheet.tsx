@@ -3,62 +3,63 @@ import { ArrowLeft, Settings, X } from "lucide-react";
 import toast from "react-hot-toast";
 import { SheetClose } from "@/components/ui/sheet";
 import { SideSheet, type SheetProps } from "@/components/shared/side-sheet";
-import {
-  useAuth,
-  useBotQuery,
-  useUpdateBotMutation,
-  useExecuteBotMutation,
-  formatApiError,
-} from "@/apis";
+import { useAuth, useBotQuery, formatApiError } from "@/apis";
+import { useTrading } from "@/components/trade/trading-context";
 import { AutoBotMain } from "./auto-bot-main";
 import { AutoBotSetup } from "./auto-bot-setup";
 
 export function AutoBotSheet(props: SheetProps) {
   const [view, setView] = useState<"main" | "setup">("main");
   const { isAuthenticated } = useAuth();
+  const { selectedAsset, botWs } = useTrading();
 
-  const { data: bot, isLoading } = useBotQuery({
-    enabled: props.open && isAuthenticated,
+  // Fallback to React Query if botWs hasn't fetched bot object yet
+  const { data: botQueryData, isLoading: isBotLoading } = useBotQuery({
+    enabled: props.open && isAuthenticated && !botWs.bot,
   });
 
-  const updateBotMutation = useUpdateBotMutation();
-  const executeBotMutation = useExecuteBotMutation();
+  const bot = botWs.bot || botQueryData;
+  const isBotActive = Boolean(bot?.is_enabled);
 
-  const handleToggleActive = () => {
+  const handleToggleActive = async () => {
     if (!isAuthenticated) {
       toast.error("Please sign in to use Auto Bot");
       return;
     }
 
-    const nextState = !bot?.is_enabled;
-    updateBotMutation.mutate(
-      { is_enabled: nextState },
-      {
-        onSuccess: () => {
-          toast.success(nextState ? "Auto Bot activated!" : "Auto Bot deactivated!");
-        },
-        onError: (err) => {
-          toast.error(formatApiError(err));
-        },
+    if (!isBotActive) {
+      // Activating Auto Bot
+      const assetId = bot?.asset_id ?? selectedAsset?.id;
+      if (assetId == null) {
+        toast.error("Select a trading asset before activating Auto Bot");
+        return;
       }
-    );
+      try {
+        await botWs.startBot({ asset_id: assetId });
+      } catch (err) {
+        toast.error(formatApiError(err));
+      }
+    } else {
+      // Deactivating Auto Bot
+      try {
+        await botWs.stopBot();
+      } catch (err) {
+        toast.error(formatApiError(err));
+      }
+    }
   };
 
-  const handleExecuteCycle = () => {
+  const handleExecuteCycle = async () => {
     if (!isAuthenticated) {
       toast.error("Please sign in to execute Auto Bot");
       return;
     }
 
-    executeBotMutation.mutate(undefined, {
-      onSuccess: (res) => {
-        const msg = res?.message || res?.detail || "Auto Bot cycle executed successfully!";
-        toast.success(msg);
-      },
-      onError: (err) => {
-        toast.error(formatApiError(err));
-      },
-    });
+    try {
+      await botWs.executeCycle();
+    } catch (err) {
+      toast.error(formatApiError(err));
+    }
   };
 
   return (
@@ -77,7 +78,26 @@ export function AutoBotSheet(props: SheetProps) {
           >
             <X className="size-5" />
           </SheetClose>
-          <h2 className="text-xl font-normal text-white">Auto Bot</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-xl font-normal text-white">Auto Bot</h2>
+            {isAuthenticated && (
+              <span
+                title={botWs.isConnected ? "WebSocket Live Connected" : "WebSocket Disconnected"}
+                className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
+                  botWs.isConnected
+                    ? "bg-[#00E676]/15 text-[#00E676] border-[#00E676]/30"
+                    : "bg-amber-500/15 text-amber-400 border-amber-500/30"
+                }`}
+              >
+                <span
+                  className={`size-1.5 rounded-full ${
+                    botWs.isConnected ? "bg-[#00E676] animate-pulse" : "bg-amber-400"
+                  }`}
+                />
+                {botWs.isConnected ? "Live WS" : "Offline"}
+              </span>
+            )}
+          </div>
           <button
             type="button"
             aria-label="Open Auto Bot Setup"
@@ -104,14 +124,16 @@ export function AutoBotSheet(props: SheetProps) {
       {/* Content */}
       {view === "main" ? (
         <AutoBotMain
-          isActive={Boolean(bot?.is_enabled)}
+          isActive={isBotActive}
           onToggleActive={handleToggleActive}
           onExecute={handleExecuteCycle}
-          isLoading={isLoading}
-          isToggling={updateBotMutation.isPending}
-          isExecuting={executeBotMutation.isPending}
+          isLoading={isBotLoading && !bot}
+          isToggling={botWs.isStarting || botWs.isStopping}
+          isExecuting={botWs.isExecuting}
           isAuthenticated={isAuthenticated}
+          isWsConnected={botWs.isConnected}
           bot={bot}
+          lastDecision={botWs.lastDecision}
         />
       ) : (
         <AutoBotSetup

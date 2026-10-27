@@ -9,11 +9,14 @@ import {
   useBuyMutation,
   useSellMutation,
   useMarketWebSocket,
+  useBotWebSocket,
+  type UseBotWebSocketReturn,
   formatApiError,
   type TradingAsset,
   type ChartPoint,
   type MarketQuote,
   type TrendAsset,
+  type Deal,
 } from "@/apis";
 
 export type ChartType = "area" | "candles";
@@ -64,10 +67,14 @@ interface TradingContextValue {
 
   // Active trades on the chart
   activeTrades: ActiveTradeMarker[];
+  addActiveTrade: (marker: ActiveTradeMarker) => void;
 
   // Balance & Auth
   displayBalance: string;
   isAuthenticated: boolean;
+
+  // Auto Bot Real-time WebSocket
+  botWs: UseBotWebSocketReturn;
 }
 
 const TradingContext = createContext<TradingContextValue | null>(null);
@@ -157,6 +164,10 @@ export function TradingProvider({ children }: { children: React.ReactNode }) {
   // Active trades tracking
   const [activeTrades, setActiveTrades] = useState<ActiveTradeMarker[]>([]);
 
+  const addActiveTrade = useCallback((marker: ActiveTradeMarker) => {
+    setActiveTrades((prev) => [...prev, marker]);
+  }, []);
+
   // Periodic cleanup of expired trades
   useEffect(() => {
     if (activeTrades.length === 0) return;
@@ -166,6 +177,42 @@ export function TradingProvider({ children }: { children: React.ReactNode }) {
     }, 1000);
     return () => clearInterval(interval);
   }, [activeTrades.length]);
+
+  // Connect Auto Bot real-time WebSocket
+  const handleBotDeal = useCallback(
+    (deal: Deal) => {
+      const entryPrice = deal.entry_price
+        ? parseFloat(deal.entry_price)
+        : currentPrice || 0;
+      const durSeconds = deal.auto_close_seconds || 30;
+      const openedAt = deal.opened_at
+        ? new Date(deal.opened_at).getTime()
+        : Date.now();
+      const expiresAt = deal.closes_at
+        ? new Date(deal.closes_at).getTime()
+        : openedAt + durSeconds * 1000;
+
+      const marker: ActiveTradeMarker = {
+        id: deal.id,
+        symbol: deal.display_name || deal.symbol,
+        direction: deal.direction,
+        entryPrice,
+        investment: parseFloat(deal.investment || "5.00"),
+        payoutPercent: parseFloat(deal.payout_percent || "80"),
+        openedAt,
+        durationSeconds: durSeconds,
+        expiresAt,
+      };
+
+      addActiveTrade(marker);
+    },
+    [currentPrice, addActiveTrade]
+  );
+
+  const botWs = useBotWebSocket({
+    enabled: isAuthenticated,
+    onDeal: handleBotDeal,
+  });
 
   // Place trade handler
   const isPlacingTrade = buyMutation.isPending || sellMutation.isPending;
@@ -211,7 +258,7 @@ export function TradingProvider({ children }: { children: React.ReactNode }) {
             expiresAt: now + seconds * 1000,
           };
 
-          setActiveTrades((prev) => [...prev, marker]);
+          addActiveTrade(marker);
 
           toast.success(
             `Deal placed: ${direction.toUpperCase()} ${selectedAsset.symbol} ($${investment.toFixed(2)})`
@@ -230,6 +277,7 @@ export function TradingProvider({ children }: { children: React.ReactNode }) {
       buyMutation,
       sellMutation,
       currentPrice,
+      addActiveTrade,
     ]
   );
 
@@ -272,8 +320,10 @@ export function TradingProvider({ children }: { children: React.ReactNode }) {
         executeTrade,
         isPlacingTrade,
         activeTrades,
+        addActiveTrade,
         displayBalance,
         isAuthenticated,
+        botWs,
       }}
     >
       {children}

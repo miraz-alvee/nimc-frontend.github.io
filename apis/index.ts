@@ -15,5 +15,7 @@ export * from "./types/trading.types";
 export * from "./services/trading.service";
 export * from "./hooks/useTrading";
 export * from "./hooks/useMarketWebSocket";
+export * from "./hooks/useBotWebSocket";
 export * from "./utils/error";
 export { default as axiosApiInstance } from "./apiAxiosInstance";
+

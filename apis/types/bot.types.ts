@@ -61,3 +61,28 @@ export interface ExecuteBotResponse {
   status?: string;
   [key: string]: unknown;
 }
+
+export interface BotDecision {
+  action: "buy" | "sell" | "hold" | string;
+  reason: string;
+}
+
+export interface BotWsMessage {
+  type: "bot" | "error" | string;
+  bot?: AutoBot;
+  decision?: BotDecision;
+  deal?: import("./trading.types").Deal | null;
+  available_balance?: string;
+  currency?: string;
+  detail?: string;
+  message?: string;
+}
+
+export type BotWsAction =
+  | { action: "auth"; token: string }
+  | { action: "status" }
+  | { action: "start" }
+  | { action: "stop" }
+  | { action: "execute" }
+  | { action: "update"; bot: PatchedAutoBotRequest };
+

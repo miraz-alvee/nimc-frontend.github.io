@@ -58,7 +58,7 @@ export function LiveTradingChart() {
   const visiblePoints = useMemo(() => {
     if (!chartPoints || chartPoints.length === 0) return [];
 
-    // Zoom: 100% = show last 45 points, 150% = show last 30 points, 50% = show all 60
+    // Higher zoom focuses on fewer recent points; lower zoom shows more history.
     const pointCount = Math.max(
       15,
       Math.min(chartPoints.length, Math.round((60 * 100) / zoom))
@@ -126,10 +126,10 @@ export function LiveTradingChart() {
         maxP += 0.001;
       }
 
-      const pRange = maxP - minP;
-      minP -= pRange * 0.15;
-      maxP += pRange * 0.15;
-      const adjustedRange = maxP - minP;
+      const priceCenter = (minP + maxP) / 2;
+      const adjustedRange = (maxP - minP) * 1.3 * (100 / zoom);
+      minP = priceCenter - adjustedRange / 2;
+      maxP = priceCenter + adjustedRange / 2;
 
       const getX = (idx: number) => {
         return marginLeft + (idx / (visiblePoints.length - 1)) * chartW;
@@ -353,36 +353,32 @@ export function LiveTradingChart() {
         ctx.stroke();
         ctx.setLineDash([]);
 
-        // Entry Strike Tag on Left
-        const tagText = `${isBuy ? "▲" : "▼"} $${trade.investment} (${trade.direction.toUpperCase()})`;
-        ctx.fillStyle = tradeColor;
-        ctx.font = "bold 11px var(--font-albert-sans), sans-serif";
-        ctx.textAlign = "left";
-        ctx.textBaseline = "bottom";
-        ctx.fillText(tagText, marginLeft + 8, tradeY - 4);
-
-        // Countdown Timer & Dynamic P&L Badge on the line
+        // Center the trade summary on its entry line.
         const remainingSec = Math.max(0, Math.ceil((trade.expiresAt - now) / 1000));
         const estProfit = (trade.investment * (trade.payoutPercent / 100)).toFixed(2);
-        const statusText = inProfit
-          ? `+${estProfit} (${remainingSec}s)`
-          : `-$${trade.investment} (${remainingSec}s)`;
-
-        const statusW = 95;
+        const statusText =
+          `${trade.direction.toUpperCase()} $${trade.investment} @ ${formatPrice(trade.entryPrice)} ` +
+          `${inProfit ? `+$${estProfit}` : `-$${trade.investment}`} ${remainingSec}s`;
         const statusH = 20;
-        const statusX = width - marginRight - statusW - 10;
-        const statusY = tradeY - statusH / 2;
+        ctx.font = "bold 10px monospace, sans-serif";
+        const statusW = Math.max(
+          1,
+          Math.min(chartW - 16, ctx.measureText(statusText).width + 20)
+        );
+        const statusX = marginLeft + (chartW - statusW) / 2;
+        const statusY = Math.max(
+          marginTop + statusH / 2,
+          Math.min(marginTop + chartH - statusH / 2, tradeY)
+        );
 
         ctx.fillStyle = inProfit ? "#00E676" : "#FF2E4D";
         ctx.beginPath();
         ctx.roundRect(statusX, statusY, statusW, statusH, 5);
         ctx.fill();
-
         ctx.fillStyle = "#053345";
-        ctx.font = "bold 10px monospace, sans-serif";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.fillText(statusText, statusX + statusW / 2, tradeY);
+        ctx.fillText(statusText, statusX + statusW / 2, statusY, statusW - 12);
       });
 
       // 7. Interactive Crosshair & Tooltip
@@ -440,6 +436,7 @@ export function LiveTradingChart() {
   }, [
     visiblePoints,
     currentPrice,
+    zoom,
     chartType,
     activeTrades,
     hoverPos,

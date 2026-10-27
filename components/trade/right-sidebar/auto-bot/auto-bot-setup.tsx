@@ -2,15 +2,14 @@
 
 import { useState } from "react";
 import { ChevronDown } from "lucide-react";
-import toast from "react-hot-toast";
-import {
-  useUpdateBotMutation,
-  formatApiError,
-  type AutoBot,
-  type TradeDirectionEnum,
-  type StrategyTypeEnum,
-  type TimeframeEnum,
+import type {
+  AutoBot,
+  DirectionEnum,
+  TradeDirectionEnum,
+  StrategyTypeEnum,
+  TimeframeEnum,
 } from "@/apis";
+import { useTrading } from "@/components/trade/trading-context";
 import { cn } from "@/lib/utils";
 
 type FormRowProps = {
@@ -128,6 +127,9 @@ export function AutoBotSetup({ bot, onBack }: Props) {
   // Section 1: Trade & Position Sizing
   const [lotSize, setLotSize] = useState(bot?.lot_size || "0.10");
   const [investment, setInvestment] = useState(bot?.investment || "");
+  const [autoCloseSeconds, setAutoCloseSeconds] = useState(
+    String(bot?.auto_close_seconds || 30)
+  );
   const [useDynamicRisk, setUseDynamicRisk] = useState(bot?.use_dynamic_risk ?? true);
   const [riskPerTrade, setRiskPerTrade] = useState(bot?.risk_per_trade_percent || "1.00");
 
@@ -162,37 +164,50 @@ export function AutoBotSetup({ bot, onBack }: Props) {
   const [trailingStep, setTrailingStep] = useState(bot?.trailing_step_pips || "5.00");
   const [breakEvenTrigger, setBreakEvenTrigger] = useState(bot?.break_even_trigger || "10.00");
 
-  const updateBotMutation = useUpdateBotMutation({
-    onSuccess: () => {
-      toast.success("Auto Bot settings saved!");
-      onBack?.();
-    },
-    onError: (error) => {
-      toast.error(formatApiError(error));
-    },
-  });
+  const { botWs, selectedAsset } = useTrading();
+  const [isSaving, setIsSaving] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSaving(true);
 
-    updateBotMutation.mutate({
-      lot_size: lotSize,
-      ...(investment.trim() ? { investment: investment.trim() } : {}),
-      use_dynamic_risk: useDynamicRisk,
-      risk_per_trade_percent: riskPerTrade,
-      trade_direction: TRADE_DIRECTION_MAP[tradeDirection] || "buy_sell",
-      strategy_type: STRATEGY_TYPE_MAP[strategyType] || "moving_average",
-      fast_ma_period: fastMA,
-      slow_ma_period: slowMA,
-      rsi_overbought: rsiOverbought,
-      rsi_oversold: rsiOversold,
-      timeframe: TIMEFRAME_MAP[timeframe] || "H1",
-      stop_loss_pips: stopLoss,
-      take_profit_pips: takeProfit,
-      trailing_stop_pips: trailingStop,
-      trailing_step_pips: trailingStep,
-      break_even_trigger: breakEvenTrigger,
-    });
+    try {
+      const parsedAutoClose = parseInt(autoCloseSeconds, 10);
+      const autoCloseVal = !isNaN(parsedAutoClose)
+        ? Math.min(86400, Math.max(5, parsedAutoClose))
+        : 30;
+
+      const tradeDir = TRADE_DIRECTION_MAP[tradeDirection] || "buy_sell";
+      const dir: DirectionEnum = tradeDir === "sell" ? "sell" : "buy";
+      const assetId = bot?.asset_id ?? selectedAsset?.id ?? undefined;
+
+      await botWs.updateBot({
+        asset_id: assetId,
+        direction: dir,
+        trade_direction: tradeDir,
+        auto_close_seconds: autoCloseVal,
+        lot_size: lotSize,
+        ...(investment.trim() ? { investment: investment.trim() } : {}),
+        use_dynamic_risk: useDynamicRisk,
+        risk_per_trade_percent: riskPerTrade,
+        strategy_type: STRATEGY_TYPE_MAP[strategyType] || "moving_average",
+        fast_ma_period: fastMA,
+        slow_ma_period: slowMA,
+        rsi_overbought: rsiOverbought,
+        rsi_oversold: rsiOversold,
+        timeframe: TIMEFRAME_MAP[timeframe] || "H1",
+        stop_loss_pips: stopLoss,
+        take_profit_pips: takeProfit,
+        trailing_stop_pips: trailingStop,
+        trailing_step_pips: trailingStep,
+        break_even_trigger: breakEvenTrigger,
+      });
+      onBack?.();
+    } catch {
+      // Toast error is handled inside botWs.updateBot
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -205,6 +220,11 @@ export function AutoBotSetup({ bot, onBack }: Props) {
         <div className="rounded-xl border border-[#005F78] bg-[#104E64] p-2 space-y-3">
           <FormInputRow label="Lot Size" value={lotSize} onChange={setLotSize} />
           <FormInputRow label="Investment ($)" value={investment} onChange={setInvestment} />
+          <FormInputRow
+            label="Auto-Close (sec)"
+            value={autoCloseSeconds}
+            onChange={setAutoCloseSeconds}
+          />
 
           <div className="flex items-center justify-between gap-2">
             <span className="text-sm font-normal text-white">Use Dynamic Risk</span>
@@ -351,7 +371,7 @@ export function AutoBotSetup({ bot, onBack }: Props) {
         <button
           type="button"
           onClick={onBack}
-          disabled={updateBotMutation.isPending}
+          disabled={isSaving || botWs.isUpdating}
           className="cursor-pointer w-full px-4 py-3 text-base font-medium text-white bg-[#104E64] border border-[#005F78] rounded-xl hover:bg-[#14617d] transition-colors disabled:opacity-60"
         >
           Cancel
@@ -360,10 +380,10 @@ export function AutoBotSetup({ bot, onBack }: Props) {
         {/* Submit Button */}
         <button
           type="submit"
-          disabled={updateBotMutation.isPending}
+          disabled={isSaving || botWs.isUpdating}
           className="cursor-pointer w-full px-4 py-3 text-base font-medium text-black bg-[#00B8DB] border border-[#005F78] rounded-xl hover:bg-[#00d0f7] transition-colors shadow-sm disabled:opacity-60"
         >
-          {updateBotMutation.isPending ? "Saving..." : "Save"}
+          {isSaving || botWs.isUpdating ? "Saving..." : "Save"}
         </button>
       </div>
     </form>

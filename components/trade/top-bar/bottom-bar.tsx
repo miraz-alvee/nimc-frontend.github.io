@@ -48,8 +48,9 @@ export function BottomTradeBar() {
           <button
             type="button"
             aria-label="Zoom in"
-            onClick={() => setZoom((z) => Math.min(200, z + 10))}
-            className="flex size-10 items-center justify-center hover:bg-cyan-400/10 active:bg-cyan-400/20 transition-colors cursor-pointer"
+            onClick={() => setZoom((z) => Math.min(400, z + 25))}
+            disabled={zoom >= 400}
+            className="flex size-10 items-center justify-center hover:bg-cyan-400/10 active:bg-cyan-400/20 transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
           >
             <ZoomIn className="size-4.5 text-white/90" />
           </button>
@@ -61,8 +62,9 @@ export function BottomTradeBar() {
           <button
             type="button"
             aria-label="Zoom out"
-            onClick={() => setZoom((z) => Math.max(50, z - 10))}
-            className="flex size-10 items-center justify-center hover:bg-cyan-400/10 active:bg-cyan-400/20 transition-colors cursor-pointer"
+            onClick={() => setZoom((z) => Math.max(25, z - 25))}
+            disabled={zoom <= 25}
+            className="flex size-10 items-center justify-center hover:bg-cyan-400/10 active:bg-cyan-400/20 transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
           >
             <ZoomOut className="size-4.5 text-white/90" />
           </button>
