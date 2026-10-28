@@ -82,6 +82,11 @@ export function LiveTradingChart() {
 
   useEffect(() => {
     selectedAssetRef.current = selectedAsset;
+    rawPointsRef.current = [];
+    displayPriceRef.current = null;
+    targetPriceRef.current = null;
+    smoothCenterPriceRef.current = null;
+    smoothRangeRef.current = null;
   }, [selectedAsset]);
 
   useEffect(() => {
@@ -114,6 +119,9 @@ export function LiveTradingChart() {
   const tradeAnchorsRef = useRef<Map<number, number>>(new Map());
   // Continuous forward wave time-flow state (rolling market tape progression)
   const timeScrollProgressRef = useRef<number>(0);
+  // Smooth Y-axis camera tracking refs (prevents sudden vertical jumping/oscillating)
+  const smoothCenterPriceRef = useRef<number | null>(null);
+  const smoothRangeRef = useRef<number | null>(null);
 
   // Social trade markers along the historical line (matching Image 1)
   const socialPinsRef = useRef<SocialTradePin[]>([
@@ -147,9 +155,14 @@ export function LiveTradingChart() {
       if (displayPriceRef.current === null || isInitialBatch) {
         displayPriceRef.current = newPrice;
       }
-      const snap = getMarketSnapshot();
-      if (snap.points.length > 0) {
-        rawPointsRef.current = snap.points;
+      if (isInitialBatch || rawPointsRef.current.length === 0) {
+        const snap = getMarketSnapshot();
+        if (snap.points.length > 0) {
+          rawPointsRef.current = [...snap.points];
+        }
+      } else if (rawPointsRef.current.length > 0) {
+        // Update latest historical point's price in place without replacing buffer
+        rawPointsRef.current[rawPointsRef.current.length - 1].price = newPrice;
       }
     });
     return unsubscribe;
@@ -438,10 +451,10 @@ export function LiveTradingChart() {
       const secondaryWave = Math.sin(tSec * 0.65 + 1.1);
       const smoothWave = primaryWave * 0.65 + secondaryWave * 0.35;
 
-      // Sub-pip amplitude gives gentle, graceful living motion without wild swinging or shaking
-      const smoothPriceOffset = smoothWave * (assetPip * 0.85);
+      // Subtle sub-pip micro-breath (gentle ~0.08 pip, barely ~1px, zero wild up/down jumping)
+      const smoothPriceOffset = smoothWave * (assetPip * 0.08);
 
-      // Instantaneous active price moving with liquid smoothness
+      // Instantaneous active price moving with calm, liquid smoothness
       const activePriceVal = basePrice + smoothPriceOffset;
 
       // Continuous forward wave time-flow progression (market moves forward like an active wave)
@@ -459,8 +472,9 @@ export function LiveTradingChart() {
           const lastPt = rawPointsRef.current[rawPointsRef.current.length - 1];
           const nextSec =
             (lastPt?.recorded_at || Math.floor(Date.now() / 1000)) + Math.round(stepDurationSec);
+          // Save authentic base market price into history (never artificial sine extremes)
           rawPointsRef.current.push({
-            price: activePriceVal,
+            price: basePrice,
             recorded_at: nextSec,
             label: "",
           });
@@ -516,7 +530,7 @@ export function LiveTradingChart() {
         }
       }
 
-      // Single-pass Min and Max calculation
+      // Single-pass Min and Max calculation across visible points
       let minP = Infinity;
       let maxP = -Infinity;
 
@@ -538,23 +552,35 @@ export function LiveTradingChart() {
       if (minP === Infinity || maxP === -Infinity) {
         minP = activePriceVal - 0.0005;
         maxP = activePriceVal + 0.0005;
-      } else if (minP === maxP) {
-        minP -= 0.0005;
-        maxP += 0.0005;
       }
 
-      // Dynamic price range with vertical pan offset
-      const pRange = maxP - minP;
-      const adjustedRange = pRange * 1.35 * (100 / currentZoom);
-      const baseCenter = (minP + maxP) / 2;
-      const priceCenter = baseCenter - (currentPanY / chartH) * adjustedRange;
+      // Sensible minimum price spread so the chart never hyper-zooms into microscopic fluctuations
+      const rawSpread = Math.max(0.00005, maxP - minP);
+      const minSensibleSpread = Math.max(0.0006, basePrice * 0.0008);
+      const effectiveSpread = Math.max(rawSpread, minSensibleSpread);
+      const targetRange = effectiveSpread * 1.45 * (100 / currentZoom);
+      const targetCenter = (minP + maxP) / 2;
 
-      const effectiveMinP = priceCenter - adjustedRange / 2;
-      const effectiveMaxP = priceCenter + adjustedRange / 2;
+      // Smooth camera interpolation on Y axis: keeps the chart grounded and stable with 0 vertical shaking
+      if (smoothCenterPriceRef.current === null || smoothRangeRef.current === null) {
+        smoothCenterPriceRef.current = targetCenter;
+        smoothRangeRef.current = targetRange;
+      } else {
+        const cameraLerp = 1 - Math.exp(-dt * 3.5);
+        smoothCenterPriceRef.current += (targetCenter - smoothCenterPriceRef.current) * cameraLerp;
+        smoothRangeRef.current += (targetRange - smoothRangeRef.current) * cameraLerp;
+      }
+
+      const stableCenter = smoothCenterPriceRef.current;
+      const stableRange = smoothRangeRef.current;
+
+      const priceCenter = stableCenter - (currentPanY / chartH) * stableRange;
+      const effectiveMinP = priceCenter - stableRange / 2;
+      const effectiveMaxP = priceCenter + stableRange / 2;
 
       // Y coordinate from price value
       const getY = (val: number) => {
-        return marginTop + chartH - ((val - effectiveMinP) / adjustedRange) * chartH;
+        return marginTop + chartH - ((val - effectiveMinP) / stableRange) * chartH;
       };
 
       // Live tick Y coordinate
@@ -571,7 +597,7 @@ export function LiveTradingChart() {
 
       for (let i = 0; i <= gridLevels; i++) {
         const y = marginTop + (i / gridLevels) * chartH;
-        const priceVal = effectiveMaxP - (i / gridLevels) * adjustedRange;
+        const priceVal = effectiveMaxP - (i / gridLevels) * stableRange;
 
         // Horizontal dashed line
         ctx.setLineDash([3, 5]);
@@ -1132,7 +1158,7 @@ export function LiveTradingChart() {
 
         // Left axis crosshair price pill
         const cursorPrice =
-          effectiveMaxP - ((currentHover.y - marginTop) / chartH) * adjustedRange;
+          effectiveMaxP - ((currentHover.y - marginTop) / chartH) * stableRange;
         const cPriceText = formatPrice(cursorPrice);
         const cPillW = 74;
         const cPillH = 20;
