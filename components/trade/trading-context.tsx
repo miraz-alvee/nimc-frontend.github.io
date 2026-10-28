@@ -31,6 +31,7 @@ export interface ActiveTradeMarker {
   openedAt: number; // epoch ms
   durationSeconds: number;
   expiresAt: number; // epoch ms
+  entryIndex?: number;
 }
 
 interface TradingContextValue {
@@ -75,6 +76,14 @@ interface TradingContextValue {
 
   // Auto Bot Real-time WebSocket
   botWs: UseBotWebSocketReturn;
+
+  // Direct high-performance access for 60/120 FPS Canvas rendering
+  getMarketSnapshot: () => {
+    points: ChartPoint[];
+    currentPrice: number | null;
+    prevPrice: number | null;
+  };
+  subscribeMarketTicks: (cb: (price: number, timestamp: number, isInitialBatch?: boolean) => void) => () => void;
 }
 
 const TradingContext = createContext<TradingContextValue | null>(null);
@@ -123,6 +132,8 @@ export function TradingProvider({ children }: { children: React.ReactNode }) {
     prevPrice,
     quotes,
     selectedTrend,
+    getSnapshot: getMarketSnapshot,
+    subscribeTicks: subscribeMarketTicks,
   } = useMarketWebSocket(activeAssetId);
 
   // Chart settings
@@ -246,6 +257,9 @@ export function TradingProvider({ children }: { children: React.ReactNode }) {
             (selectedAsset.price ? parseFloat(String(selectedAsset.price)) : 0);
 
           const now = Date.now();
+          const snap = getMarketSnapshot();
+          const entryIndex = snap.points.length > 0 ? snap.points.length - 1 : 0;
+
           const marker: ActiveTradeMarker = {
             id: deal.id,
             symbol: deal.display_name || deal.symbol,
@@ -256,6 +270,7 @@ export function TradingProvider({ children }: { children: React.ReactNode }) {
             openedAt: now,
             durationSeconds: seconds,
             expiresAt: now + seconds * 1000,
+            entryIndex,
           };
 
           addActiveTrade(marker);
@@ -324,6 +339,8 @@ export function TradingProvider({ children }: { children: React.ReactNode }) {
         displayBalance,
         isAuthenticated,
         botWs,
+        getMarketSnapshot,
+        subscribeMarketTicks,
       }}
     >
       {children}

@@ -20,6 +20,7 @@ export function BottomTradeBar() {
     toggleChartType,
     executeTrade,
     isPlacingTrade,
+    selectedAsset,
   } = useTrading();
 
   return (
@@ -136,9 +137,14 @@ export function BottomTradeBar() {
                 </svg>
               )}
             </div>
-            <span className="relative text-2xl font-bold tracking-wider text-[#FF2E4D]">
-              SELL
-            </span>
+            <div className="flex flex-col items-center leading-none">
+              <span className="relative text-2xl font-black tracking-wider text-[#FF2E4D]">
+                SELL
+              </span>
+              <span className="text-[11px] font-bold text-[#FF2E4D]/80 mt-0.5">
+                {selectedAsset?.payout_percent ? `${parseInt(selectedAsset.payout_percent, 10)}%` : "86%"}
+              </span>
+            </div>
           </button>
 
           {/* BUY button */}
@@ -169,9 +175,14 @@ export function BottomTradeBar() {
                 </svg>
               )}
             </div>
-            <span className="relative text-2xl font-bold tracking-wider text-[#00E676]">
-              BUY
-            </span>
+            <div className="flex flex-col items-center leading-none">
+              <span className="relative text-2xl font-black tracking-wider text-[#00E676]">
+                BUY
+              </span>
+              <span className="text-[11px] font-bold text-[#00E676]/80 mt-0.5">
+                {selectedAsset?.payout_percent ? `${parseInt(selectedAsset.payout_percent, 10)}%` : "86%"}
+              </span>
+            </div>
           </button>
         </div>
 

@@ -1,9 +1,11 @@
 "use client";
 
+import { useState } from "react";
 import {
   Activity,
   ArrowDownRight,
   ArrowUpRight,
+  ChevronDown,
   Loader2,
   Minus,
   Play,
@@ -15,6 +17,7 @@ import {
 import { RobotAvatar } from "./robot-avatar";
 import { cn } from "@/lib/utils";
 import type { AutoBot, BotDecision } from "@/apis";
+import { useTrading } from "@/components/trade/trading-context";
 
 type Props = {
   isActive: boolean;
@@ -41,6 +44,13 @@ export function AutoBotMain({
   bot,
   lastDecision,
 }: Props) {
+  const { selectedAsset, assets, setSelectedAsset } = useTrading();
+  const [isAssetPickerOpen, setIsAssetPickerOpen] = useState(false);
+
+  // Dynamic Target Asset for Auto Bot
+  const targetAsset =
+    assets.find((a) => a.id === bot?.asset_id) || selectedAsset || assets[0];
+
   const formatDecidedTime = (dateStr?: string | null) => {
     if (!dateStr) return null;
     try {
@@ -64,7 +74,7 @@ export function AutoBotMain({
     <div className="flex-1 flex flex-col items-center justify-start pt-4 pb-6 px-5 bg-[#053345] font-albert-sans select-none overflow-y-auto">
       {/* Real-time Status Banner */}
       {isActive && (
-        <div className="mb-4 w-full flex items-center justify-between px-3 py-1.5 rounded-lg bg-[#00E5FF]/10 border border-[#00E5FF]/30 text-xs">
+        <div className="mb-3 w-full flex items-center justify-between px-3 py-1.5 rounded-lg bg-[#00E5FF]/10 border border-[#00E5FF]/30 text-xs">
           <div className="flex items-center gap-2 text-[#00E5FF] font-medium">
             <Radio className="size-3.5 animate-pulse text-[#00E5FF]" />
             <span>Auto-Trading Active</span>
@@ -80,6 +90,62 @@ export function AutoBotMain({
           </span>
         </div>
       )}
+
+      {/* Dynamic Target Asset Selector Card */}
+      <div className="mb-4 w-full rounded-xl border border-[#0092B8]/40 bg-[#022230] p-3 text-xs shadow-sm">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="relative flex size-2 items-center justify-center">
+              <span className="size-2 rounded-full bg-[#00E5FF] shadow-[0_0_8px_#00E5FF]" />
+            </span>
+            <span className="text-[11px] font-semibold text-white/60">Target Asset:</span>
+          </div>
+          {targetAsset?.payout_percent && (
+            <span className="px-2 py-0.5 rounded bg-[#00E676]/20 text-[#00E676] text-[10px] font-bold border border-[#00E676]/30">
+              {targetAsset.payout_percent}% Payout
+            </span>
+          )}
+        </div>
+        <div className="mt-2 flex items-center justify-between">
+          <span className="text-sm font-bold text-white tracking-wide truncate max-w-[180px]">
+            {targetAsset?.display_name || targetAsset?.symbol || "EUR/USD"}
+          </span>
+          {/* Quick Dynamic Asset Switcher */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setIsAssetPickerOpen(!isAssetPickerOpen)}
+              disabled={isActive}
+              className="px-2 py-1 rounded bg-[#005F78]/50 hover:bg-[#0092B8]/40 text-[11px] font-medium text-[#00E5FF] flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <span>Switch</span>
+              <ChevronDown className="size-3" />
+            </button>
+            {isAssetPickerOpen && (
+              <div className="absolute right-0 top-7 z-30 w-52 rounded-lg border border-[#005F78] bg-[#053345] p-1 shadow-2xl max-h-48 overflow-y-auto">
+                {assets.map((asset) => (
+                  <button
+                    key={asset.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedAsset(asset);
+                      setIsAssetPickerOpen(false);
+                    }}
+                    className="w-full flex items-center justify-between px-2.5 py-1.5 text-left text-xs text-white hover:bg-white/10 rounded cursor-pointer"
+                  >
+                    <span className="truncate">{asset.display_name || asset.symbol}</span>
+                    {asset.payout_percent && (
+                      <span className="text-[#00E676] font-bold text-[10px] shrink-0 ml-1">
+                        {asset.payout_percent}%
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
 
       {/* Robot Avatar */}
       <div className="relative mb-5 flex items-center justify-center">

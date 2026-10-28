@@ -22,16 +22,15 @@ import type { UserMeResponse } from "../types/auth.types";
 import { formatApiError } from "../utils/error";
 
 export function getBotWsUrl(): string {
+  if (process.env.NEXT_PUBLIC_BOT_WS_URL) {
+    return process.env.NEXT_PUBLIC_BOT_WS_URL;
+  }
   const base = process.env.NEXT_PUBLIC_API_BASE_URL || "";
   if (base.startsWith("https://")) {
     return base.replace("https://", "wss://") + "/ws/bots/";
   }
   if (base.startsWith("http://")) {
     return base.replace("http://", "ws://") + "/ws/bots/";
-  }
-  if (typeof window !== "undefined") {
-    const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-    return `${proto}//${window.location.host}/ws/bots/`;
   }
   return "wss://ni-amc.sobhoy.com/ws/bots/";
 }

@@ -61,7 +61,7 @@ function FormDropdownRow({
         <ChevronDown className="size-4 text-white/70" />
       </button>
       {isOpen && (
-        <div className="absolute right-0 top-10 z-20 w-44 rounded-lg border border-[#005F78] bg-[#053345] p-1 shadow-lg">
+        <div className="absolute right-0 top-10 z-30 w-48 rounded-lg border border-[#005F78] bg-[#053345] p-1 shadow-xl max-h-48 overflow-y-auto">
           {options.map((opt) => (
             <button
               key={opt}
@@ -164,7 +164,19 @@ export function AutoBotSetup({ bot, onBack }: Props) {
   const [trailingStep, setTrailingStep] = useState(bot?.trailing_step_pips || "5.00");
   const [breakEvenTrigger, setBreakEvenTrigger] = useState(bot?.break_even_trigger || "10.00");
 
-  const { botWs, selectedAsset } = useTrading();
+  const { botWs, selectedAsset, assets, setSelectedAsset } = useTrading();
+  const [selectedAssetId, setSelectedAssetId] = useState<number | undefined>(
+    bot?.asset_id ?? selectedAsset?.id ?? assets[0]?.id
+  );
+  const [isAssetOpen, setIsAssetOpen] = useState(false);
+
+  const currentTargetAsset =
+    assets.find((a) => a.id === selectedAssetId) || selectedAsset || assets[0];
+  const currentAssetLabel = currentTargetAsset
+    ? currentTargetAsset.display_name || currentTargetAsset.symbol
+    : "Select Asset";
+  const assetOptions = assets.map((a) => a.display_name || a.symbol);
+
   const [isSaving, setIsSaving] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -179,7 +191,7 @@ export function AutoBotSetup({ bot, onBack }: Props) {
 
       const tradeDir = TRADE_DIRECTION_MAP[tradeDirection] || "buy_sell";
       const dir: DirectionEnum = tradeDir === "sell" ? "sell" : "buy";
-      const assetId = bot?.asset_id ?? selectedAsset?.id ?? undefined;
+      const assetId = selectedAssetId ?? bot?.asset_id ?? selectedAsset?.id ?? undefined;
 
       await botWs.updateBot({
         asset_id: assetId,
@@ -218,6 +230,23 @@ export function AutoBotSetup({ bot, onBack }: Props) {
           TRADE &amp; POSITION SIZING
         </h3>
         <div className="rounded-xl border border-[#005F78] bg-[#104E64] p-2 space-y-3">
+          <FormDropdownRow
+            label="Trading Asset"
+            value={currentAssetLabel}
+            options={assetOptions}
+            isOpen={isAssetOpen}
+            onToggle={() => setIsAssetOpen(!isAssetOpen)}
+            onSelect={(opt) => {
+              const found = assets.find(
+                (a) => (a.display_name || a.symbol) === opt || a.symbol === opt
+              );
+              if (found) {
+                setSelectedAssetId(found.id);
+                setSelectedAsset(found);
+              }
+              setIsAssetOpen(false);
+            }}
+          />
           <FormInputRow label="Lot Size" value={lotSize} onChange={setLotSize} />
           <FormInputRow label="Investment ($)" value={investment} onChange={setInvestment} />
           <FormInputRow
